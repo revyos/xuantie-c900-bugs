@@ -94,5 +94,81 @@ on TH1520 SoC. `CRACKED BY GHOSTWRITE` should appear on the serial.
 
 #### Affected Variants
 
-- C906: untested)
-- C910: tested with PoC on TH1520 SoC
+- C906: tested with PoC on Sophgo CV1800B SoC
+- C910: tested with PoC on T-Head TH1520 SoC
+
+### Load instructions that modify the base register in XTheadMemIdx may halt C906
+
+Also known as C906 halt sequence.
+
+XTheadMemIdx provides extra integer memory operations. Among them there're 14
+instructions load from memory address specified by the base register as well as
+adjust the base register's value,
+
+- th.lbib
+- th.lbia
+- th.lwuib
+- th.lbuib
+- th.lwia
+- th.ldia
+- th.lwib
+- th.lbuia
+- th.lhuia
+- th.lhia
+- th.ldib
+- th.lhib
+- th.lwuia
+- th.lhuib
+
+the last two character represents the order between load operation and register
+adjustment,
+
+- `a`: after increment, adjusting the base register -> loading from memory
+- `b`: before increment, loading from memory -> adjusting the base register
+
+These instructions are useful for array and stack accesses. Encodings with the
+destination same as the base are reserved, but these reserved encodings may
+crash C906 when it's followed by a CSR read targetting the same register, and
+another access against the register.
+
+Note that arbitrary instructions could be inserted between these three
+operations, as long as they have nothing to do with the used register. Even the
+subsequent sequence is incomplete for triggerring a crash, C906 still doesn't
+report any exceptions for the reserved encoding.
+
+### PoC
+
+```asm
+        .global main
+	main:
+        mv              t0,     sp
+
+        # th.lbib       t0,     (t0),   0,      0
+        .word 0x0802c28b
+        frcsr           t0
+        addi            t0,     zero,   0
+
+        ret
+```
+
+Could be compiled with GCC directly. Running it on C906 cores trigger a machine
+crash.
+
+```shell
+gcc c906-halt-sequence.S -o c906-halt-sequence
+```
+
+#### Affected Variants
+
+- C906: tested with PoC on Sophgo CV1800B SoC
+- C910: isn't vulnerable to the issue. But it doesn't raise any exceptions for
+        the reserved instructions, either.
+
+## Reference
+
+This documentation is summarized from
+[RISCVuzz: Discovering Architectural CPU Vulnerabilities via Differential Hardware Fuzzing](https://ghostwriteattack.com/riscvuzz.pdf),
+thanks for the authors' work!
+
+[T-Head Exception Specification](https://github.com/XUANTIE-RV/thead-extension-spec)
+describes various extensions and corresponding instructions' format and behavior.
