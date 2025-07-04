@@ -87,15 +87,29 @@ gcc ghostwrite-serial.c -o ghostwrite-serial -march=rv64gc_xtheadvector
 and run with the UART base address, for example,
 
 ```shell
-./ghostwrite-serial 0xffe7014000
+./ghostwrite-serial 0xffe7014000 # TH1520
+./ghostwrite-serial 0x7040000000 # SG2042
 ```
 
-on TH1520 SoC. `CRACKED BY GHOSTWRITE` should appear on the serial.
+on TH1520 or SG2042 SoC. `CRACKED BY GHOSTWRITE` should appear on the serial.
 
 #### Affected Variants
 
-- C906: tested with PoC on Sophgo CV1800B SoC
+- C906: tested with PoC on Sophgo CV1800B SoC, triggered a SIGSEGV but no
+  arbitrary write was performed.
 - C910: tested with PoC on T-Head TH1520 SoC
+- C920v1: tested with PoC on Sophgo SG2042 SoC
+
+#### Mitigation
+
+Mainline Linux kernel is able to detect and mitigate the errata since commit
+`4bf97069239b ("riscv: Add ghostwrite vulnerability")` (landed in v6.14).
+To enable the mitigation, `CONFIG_ERRATA_THEAD_GHOSTWRITE` must be enabled when
+building the kernel.
+
+It's still possible to disable the mitigation at runtime with `mitigations=off`
+kernel argument, which is necessary to make use of XTheadVector extension or
+reproduce the above PoC.
 
 ### Load instructions that modify the base register in XTheadMemIdx may halt C906
 
